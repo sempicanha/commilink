@@ -80,7 +80,8 @@ flowchart LR
   B[Cliente B] -->|HELLO| R
   C[Cliente C] -->|HELLO| R
   A -->|ENC (room)| R
-  B & C -->|ENC recebido| Local decriptação com groupKey
+  B -->|ENC recebido| D[Local decriptação com groupKey]
+  C -->|ENC recebido| D
 ```
 
 ### Componentes
