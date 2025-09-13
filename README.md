@@ -1,116 +1,141 @@
-# CommiLink Protocol (CMLK) — README
+# CommiLink Protocol (CMLK) --- README
 
-> Documentação completa do **CommiLink Protocol (CMLK)**  
-> Protocolo híbrido, multi-transporte, E2EE (end-to-end encryption), com suporte a relay, store-and-forward/DTN, salas (rooms) e tombstones.
+> Complete documentation of the **CommiLink Protocol (CMLK)**\
+> Hybrid, multi-transport, E2EE (end-to-end encryption) protocol with
+> support for relay, store-and-forward/DTN, rooms, and tombstones.
 
----
+------------------------------------------------------------------------
 
-## Sumário
+## Table of Contents
 
-- [Visão geral](#visão-geral)  
-- [Diferenciais do CMLK](#diferenciais-do-cmlk)  
-- [Arquitetura e fluxos](#arquitetura-e-fluxos)  
-- [Mensagens e especificação](#mensagens-e-especificação)  
-- [Implementação de referência](#implementação-de-referência)  
-  - [Dependências](#dependências)  
-  - [Relay WebSocket (`server.js`)](#relay-websocket-serverjs)  
-  - [Cliente Node.js (`client.js`)](#cliente-nodejs-clientjs)  
-  - [Rodando localmente — passo a passo](#rodando-localmente---passo-a-passo)  
-- [Handshakes E2EE e derivação de chaves](#handshakes-e2ee-e-derivação-de-chaves)  
-- [Rooms / grupos](#rooms--grupos)  
-- [ACKs e Tombstones](#acks-e-tombstones)  
-- [Persistência e store-and-forward](#persistência-e-store-and-forward)  
-- [Segurança, limitações e próximos passos](#segurança-limitações-e-próximos-passos)  
-- [Licença / Contribuições](#licença--contribuições)  
+-   [Overview](#overview)\
+-   [CMLK Differentiators](#cmlk-differentiators)\
+-   [Architecture and Flows](#architecture-and-flows)\
+-   [Messages and Specification](#messages-and-specification)\
+-   [Reference Implementation](#reference-implementation)
+    -   [Dependencies](#dependencies)\
+    -   [Relay WebSocket (`server.js`)](#relay-websocket-serverjs)\
+    -   [Node.js Client (`client.js`)](#nodejs-client-clientjs)\
+    -   [Running Locally --- Step by
+        Step](#running-locally--step-by-step)\
+-   [E2EE Handshakes and Key
+    Derivation](#e2ee-handshakes-and-key-derivation)\
+-   [Rooms / Groups](#rooms--groups)\
+-   [ACKs and Tombstones](#acks-and-tombstones)\
+-   [Persistence and
+    Store-and-Forward](#persistence-and-store-and-forward)\
+-   [Security, Limitations, and Next
+    Steps](#security-limitations-and-next-steps)\
+-   [License / Contributions](#license--contributions)
 
----
+------------------------------------------------------------------------
 
-## Visão geral
+## Overview
 
-O **CommiLink Protocol (CMLK)** é um protocolo de comunicação descentralizado que:
+The **CommiLink Protocol (CMLK)** is a decentralized communication
+protocol that:
 
-- Suporta **comunicação ponto-a-ponto (1:1)** e **comunicação em grupo (rooms)**.  
-- É **adaptativo** e preparado para múltiplos meios de transporte: WebSocket, QUIC, BLE, LoRa, SMS.  
-- Garante **end-to-end encryption** usando **Curve25519** e derivação de chaves simétricas.  
-- Permite **relay / store-and-forward** para dispositivos offline ou intermitentes.  
-- Inclui **capability tokens, tombstones e persistência opcional** para controle de mensagens e revogação.  
+-   Supports **peer-to-peer (1:1)** and **group (rooms)**
+    communication.\
+-   Is **adaptive** and prepared for multiple transports: WebSocket,
+    QUIC, BLE, LoRa, SMS.\
+-   Ensures **end-to-end encryption** using **Curve25519** and symmetric
+    key derivation.\
+-   Allows **relay / store-and-forward** for offline or intermittent
+    devices.\
+-   Includes **capability tokens, tombstones, and optional persistence**
+    for message control and revocation.
 
-Este repositório implementa um **MVP**:
+This repository provides an **MVP**:
 
-- Relay WebSocket simples (`server.js`)  
-- Cliente Node.js CLI (`client.js`)  
+-   Simple WebSocket relay (`server.js`)\
+-   Node.js CLI client (`client.js`)
 
-O relay **não acessa o conteúdo das mensagens cifradas**, apenas roteia e armazena temporariamente.  
+The relay **does not access encrypted message contents**, only routes
+and temporarily stores them.
 
----
+------------------------------------------------------------------------
 
-## Diferenciais do CMLK
+## CMLK Differentiators
 
-| Característica | Descrição |
-|----------------|-----------|
-| Multi-transporte | Funciona via WebSocket, BLE, LoRa, QUIC, SMS. |
-| E2EE | Mensagens cifradas ponta-a-ponta (Curve25519 + symmetric key). |
-| Identidade descentralizada | DID baseado em Ed25519. |
-| Rooms | Salas de grupo com chave opcional para decriptação. |
-| Store-and-forward | Relay armazena mensagens para dispositivos offline. |
-| Tombstones | Revogação de mensagens antigas ou comprometidas. |
-| ACKs | Confirmação de entrega, atualização de store. |
+  Feature                  Description
+  ------------------------ -------------------------------------------------------------
+  Multi-transport          Works over WebSocket, BLE, LoRa, QUIC, SMS.
+  E2EE                     End-to-end encrypted messages (Curve25519 + symmetric key).
+  Decentralized identity   DID based on Ed25519.
+  Rooms                    Group rooms with optional decryption key.
+  Store-and-forward        Relay stores messages for offline devices.
+  Tombstones               Revocation of old or compromised messages.
+  ACKs                     Delivery confirmation, store update.
 
----
+------------------------------------------------------------------------
 
-## Arquitetura e fluxos
+## Architecture and Flows
 
-### Fluxo básico 1:1
+### Basic 1:1 Flow
 
-```mermaid
+``` mermaid
 flowchart LR
-  A[Cliente A] -->|HELLO| R[Relay]
-  R --> B[Cliente B]
+  A[Client A] -->|HELLO| R[Relay]
+  R --> B[Client B]
   B -->|ACCEPT| R
   R --> A
-  A -->|ENC (mensagem cifrada)| R
+  A -->|ENC (encrypted message)| R
   R --> B
 ```
 
-### Fluxo básico em sala (room)
+### Basic Room Flow
 
-```mermaid
+``` mermaid
 flowchart LR
-  A[Cliente A] -->|HELLO| R[Relay]
-  B[Cliente B] -->|HELLO| R
-  C[Cliente C] -->|HELLO| R
+  A[Client A] -->|HELLO| R[Relay]
+  B[Client B] -->|HELLO| R
+  C[Client C] -->|HELLO| R
   A -->|ENC (room)| R
-  B -->|ENC recebido| D[Local decriptação com groupKey]
-  C -->|ENC recebido| D
+  B -->|ENC received| D[Local decryption with groupKey]
+  C -->|ENC received| D
 ```
 
-### Componentes
+### Components
 
-- **Cliente**: gera DID, chave de box (Curve25519), conecta e envia HELLO.  
-- **Relay**: roteia mensagens, armazena temporariamente, envia backlog a novos subscribers de rooms.  
-- **Rooms**: canais lógicos com chave de grupo opcional.  
+-   **Client**: generates DID, box key (Curve25519), connects and sends
+    HELLO.\
+-   **Relay**: routes messages, temporarily stores them, sends backlog
+    to new room subscribers.\
+-   **Rooms**: logical channels with optional group key.
 
----
+------------------------------------------------------------------------
 
-## Mensagens e especificação
+## Messages and Specification
 
-### Formato
-- **CBOR** (`cbor-x` em Node.js) — compacto e eficiente.  
+### Format
 
-### Tipos de mensagem
+-   **CBOR** (`cbor-x` in Node.js) --- compact and efficient.
 
-| Tipo       | Descrição |
-|------------|-----------|
-| HELLO      | Inicia contato, envia DID e chave pública para derivar chave simétrica. |
-| ACCEPT     | Aceita conexão, envia chave pública do peer. |
-| ENC        | Mensagem cifrada (1:1 ou sala). |
-| SUBSCRIBE  | Solicita backlog de sala. |
-| ACK        | Confirma recebimento de mensagem (`mid`). |
-| TOMBSTONE  | Revoga mensagem (`mid`) ou instruções de remoção. |
+### Message Types
 
-### Exemplo HELLO (conceitual)
+  -----------------------------------------------------------------------
+  Type                               Description
+  ---------------------------------- ------------------------------------
+  HELLO                              Starts contact, sends DID and public
+                                     key for symmetric key derivation.
 
-```json
+  ACCEPT                             Accepts connection, sends peer's
+                                     public key.
+
+  ENC                                Encrypted message (1:1 or room).
+
+  SUBSCRIBE                          Requests room backlog.
+
+  ACK                                Confirms message receipt (`mid`).
+
+  TOMBSTONE                          Revokes message (`mid`) or removal
+                                     instructions.
+  -----------------------------------------------------------------------
+
+### Example HELLO
+
+``` json
 {
   "type": "HELLO",
   "from": "did:cmlk:ed25519:BASE64PUB",
@@ -119,9 +144,9 @@ flowchart LR
 }
 ```
 
-### Exemplo ACCEPT
+### Example ACCEPT
 
-```json
+``` json
 {
   "type": "ACCEPT",
   "from": "did:cmlk:ed25519:BASE64PUB",
@@ -131,9 +156,9 @@ flowchart LR
 }
 ```
 
-### Exemplo ENC 1:1
+### Example ENC 1:1
 
-```json
+``` json
 {
   "type": "ENC",
   "from": "did:cmlk:ed25519:BASE64PUB",
@@ -145,9 +170,9 @@ flowchart LR
 }
 ```
 
-### Exemplo ENC sala
+### Example ENC Room
 
-```json
+``` json
 {
   "type": "ENC",
   "from": "did:cmlk:ed25519:BASE64PUB",
@@ -159,9 +184,9 @@ flowchart LR
 }
 ```
 
-### Exemplo TOMBSTONE
+### Example TOMBSTONE
 
-```json
+``` json
 {
   "type": "TOMBSTONE",
   "from": "did:cmlk:ed25519:BASE64PUB",
@@ -170,131 +195,136 @@ flowchart LR
 }
 ```
 
----
+------------------------------------------------------------------------
 
-## Implementação de referência
+## Reference Implementation
 
-### Dependências
+### Dependencies
 
-```bash
+``` bash
 npm install ws cbor-x libsodium-wrappers readline
 ```
 
 ### Relay WebSocket (`server.js`)
 
-- Gerencia conexões de clientes.  
-- Store-and-forward por DID e por rooms.  
-- Persistência opcional em arquivo JSON (`opp_store.json`).  
-- Encaminha HELLO, ACCEPT, ENC, SUBSCRIBE, ACK, TOMBSTONE.  
+-   Manages client connections.\
+-   Store-and-forward by DID and by rooms.\
+-   Optional persistence in JSON file (`opp_store.json`).\
+-   Forwards HELLO, ACCEPT, ENC, SUBSCRIBE, ACK, TOMBSTONE.
 
-**Exemplo de execução:**
+**Run:**
 
-```bash
+``` bash
 node server.js
 ```
 
-Relay em `ws://localhost:8080`.  
+Relay at `ws://localhost:8080`.
 
-### Cliente Node.js (`client.js`)
+### Node.js Client (`client.js`)
 
-- CLI interativa: `/join <room> [groupKey]`, `/publish <room> <msg>`, `/send <peer> <msg>`, `/tombstone <mid>`.  
-- Deriva chave simétrica via `crypto_scalarmult` com chave pública do peer.  
-- Mensagens cifradas com `crypto_secretbox_easy`.  
-- Recebe e processa ACKs e TOMBSTONES.  
+-   Interactive CLI: `/join <room> [groupKey]`, `/publish <room> <msg>`,
+    `/send <peer> <msg>`, `/tombstone <mid>`.\
+-   Derives symmetric key via `crypto_scalarmult` with peer's public
+    key.\
+-   Encrypts messages with `crypto_secretbox_easy`.\
+-   Receives and processes ACKs and TOMBSTONES.
 
-**Exemplo de execução:**
+**Run:**
 
-```bash
+``` bash
 node client.js Alice
 node client.js Bob
 ```
 
----
+------------------------------------------------------------------------
 
-## Rodando localmente — passo a passo
+## Running Locally --- Step by Step
 
-1. Inicie relay:
+1.  Start relay:
 
-```bash
+``` bash
 node server.js
 ```
 
-2. Abra dois terminais e execute clientes:
+2.  Open two terminals and run clients:
 
-```bash
+``` bash
 node client.js Alice
 node client.js Bob
 ```
 
-3. No CLI do cliente:
+3.  In client CLI:
 
-```text
-/join room1 QWxhZGRpbjpPcGVuU2VzYW1l  # opcional groupKey Base64
-/publish room1 "Olá sala!"
-/send did:cmlk:ed25519:BASE64PUB "Mensagem 1:1"
+``` text
+/join room1 QWxhZGRpbjpPcGVuU2VzYW1l  # optional Base64 groupKey
+/publish room1 "Hello room!"
+/send did:cmlk:ed25519:BASE64PUB "Message 1:1"
 /tombstone 1690000000000-rnd
 /peers
 /listrooms
 ```
 
----
+------------------------------------------------------------------------
 
-## Handshakes E2EE e derivação de chaves
+## E2EE Handshakes and Key Derivation
 
-1. Cada peer gera:
-   - `sign keypair` (Ed25519) para assinatura/verificação.  
-   - `box keypair` (Curve25519) para derivar chave simétrica.  
-2. HELLO enviado com `pub`.  
-3. Peer responde ACCEPT com seu `pub`.  
-4. Cada peer calcula:
+1.  Each peer generates:
+    -   `sign keypair` (Ed25519) for signing/verification.\
+    -   `box keypair` (Curve25519) for symmetric key derivation.\
+2.  HELLO sent with `pub`.\
+3.  Peer responds ACCEPT with its `pub`.\
+4.  Each peer computes:
 
-```text
+``` text
 shared = crypto_scalarmult(privateKey, peerPub)
 symKey = crypto_generichash(32, shared)
 ```
 
-5. `symKey` é usada para cifrar/decifrar mensagens ENC.  
+5.  `symKey` is used for ENC message encryption/decryption.
 
-Relay não acessa conteúdo cifrado.  
+Relay does not access encrypted content.
 
----
+------------------------------------------------------------------------
 
-## Rooms / grupos
+## Rooms / Groups
 
-- `/join <room> [groupKeyBase64]` entra em sala.  
-- `/publish <room> <msg>` publica mensagem cifrada com **groupKey** local.  
-- Relay armazena backlog de sala e envia aos novos subscribers.  
-- Mensagens não podem ser lidas sem a **groupKey** correta.  
+-   `/join <room> [groupKeyBase64]` joins a room.\
+-   `/publish <room> <msg>` publishes encrypted message with local
+    **groupKey**.\
+-   Relay stores room backlog and delivers to new subscribers.\
+-   Messages cannot be read without the correct **groupKey**.
 
----
+------------------------------------------------------------------------
 
-## ACKs e Tombstones
+## ACKs and Tombstones
 
-- **ACK**: confirma recebimento de `mid`. Remove da fila do relay e rooms.  
-- **TOMBSTONE**: revoga mensagem. Remove de pending e rooms. Propaga para todos.  
+-   **ACK**: confirms receipt of `mid`. Removes from relay and rooms
+    queue.\
+-   **TOMBSTONE**: revokes message. Removes from pending and rooms.
+    Propagates to all.
 
----
+------------------------------------------------------------------------
 
-## Persistência e store-and-forward
+## Persistence and Store-and-Forward
 
-- Relay mantém `store` em memória (`byClientDid`, `rooms`).  
-- Pode salvar e carregar de `opp_store.json`.  
-- Garante entrega mesmo que cliente esteja offline no momento do envio.  
+-   Relay keeps `store` in memory (`byClientDid`, `rooms`).\
+-   Can save/load from `opp_store.json`.\
+-   Ensures delivery even if client was offline at send time.
 
----
+------------------------------------------------------------------------
 
-## Segurança, limitações e próximos passos
+## Security, Limitations, and Next Steps
 
-- Relay não deve acessar mensagens cifradas.  
-- Limitações do MVP: apenas WebSocket, rooms simples.  
-- Futuro: multi-transporte, compressão, capabilities, revogação de chaves, suporte a IoT.  
-- Evitar exposição de groupKeys fora do cliente.  
-- Monitorar tamanho do backlog em rooms grandes.  
+-   Relay must not access encrypted messages.\
+-   MVP limitations: WebSocket only, simple rooms.\
+-   Future: multi-transport, compression, capabilities, key revocation,
+    IoT support.\
+-   Avoid exposing groupKeys outside the client.\
+-   Monitor backlog size in large rooms.
 
----
+------------------------------------------------------------------------
 
-## Licença / Contribuições
+## License / Contributions
 
-- Licença MIT.  
-- Contribuições via pull request ou issues bem-vindas.
-
+-   MIT License.\
+-   Contributions via pull request or issues welcome.
