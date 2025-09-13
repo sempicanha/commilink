@@ -91,7 +91,7 @@ flowchart LR
   A[Client A] -->|HELLO| R[Relay]
   B[Client B] -->|HELLO| R
   C[Client C] -->|HELLO| R
-  A -->|ENC \(room\)| R
+  A -->|ENC room| R
   B -->|ENC received| D[Local decryption with groupKey]
   C -->|ENC received| D
 ```
