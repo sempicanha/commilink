@@ -80,7 +80,7 @@ flowchart LR
   R --> B[Client B]
   B -->|ACCEPT| R
   R --> A
-  A -->|ENC (encrypted message)| R
+  A -->|ENC (encrypted message)| B
   R --> B
 ```
 
