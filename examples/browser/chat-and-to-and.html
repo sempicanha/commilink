@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <title>CMLK Chat 1:1</title>
+  <style>
+    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    margin: 0;
+    padding: 0;
+    background: linear-gradient(135deg, #6a11cb 0%, #2575fc 100%);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh; }
+    #chatDiv { display: none; height: calc(100% - 50px); flex-direction: column; }
+    #messages { flex: 1; border: 1px solid #ccc; padding: 10px; overflow-y: auto; display: flex; flex-direction: column; border-radius:5px; }
+    #inputArea { display: flex; margin-top: 10px; }
+    #inputArea input { flex: 1; padding: 8px; margin-right: 5px; }
+    #inputArea button { padding: 8px; }
+    #chatDiv h2{
+      margin: 0px;
+      color: #fff;
+      margin-bottom: 10px;
+    }
+    .message {
+      margin: 5px;
+      padding: 8px 12px;
+      border-radius: 12px;
+      max-width: 70%;
+      word-wrap: break-word;
+      position: relative;
+    }
+    .send { background-color: #d4f7d4; align-self: flex-end; text-align: right; }
+    .recv { background-color: #e6d4f7; align-self: flex-start; text-align: left; }
+    .system { background-color: #d4e6f7; color: #003366; align-self: center; text-align: center; }
+    .error { background-color: #f7d4d4; color: #660000; align-self: center; text-align: center; }
+    .copy-btn {
+      background: transparent;
+      border: none;
+      cursor: pointer;
+      margin-left: 5px;
+      font-size: 0.9em;
+    }
+     #loginDiv {
+    background-color: #ffffff;
+    padding: 40px 50px;
+    border-radius: 20px;
+    box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+    text-align: center;
+    width: 350px;
+    animation: fadeIn 1s ease;
+  }
+
+  #loginDiv h2 {
+    margin-bottom: 30px;
+    color: #333;
+    font-size: 28px;
+    letter-spacing: 1px;
+  }
+
+  /* Inputs */
+  #loginDiv input {
+    width: 100%;
+    padding: 12px 15px;
+    margin-bottom: 20px;
+    border-radius: 10px;
+    border: 1px solid #ccc;
+    outline: none;
+    font-size: 16px;
+    transition: 0.3s;
+  }
+
+  #loginDiv input:focus {
+    border-color: #2575fc;
+    box-shadow: 0 0 8px rgba(37,117,252,0.5);
+  }
+
+  /* Botão */
+  #loginDiv button {
+    width: 100%;
+    padding: 12px;
+    border-radius: 10px;
+    border: none;
+    background: #2575fc;
+    color: #fff;
+    font-size: 18px;
+    font-weight: bold;
+    cursor: pointer;
+    transition: 0.3s;
+  }
+
+  #loginDiv button:hover {
+    background: #1a5dcc;
+    transform: translateY(-2px);
+    box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+  }
+
+  /* Pequeno texto de rodapé */
+  #loginDiv p {
+    margin-top: 15px;
+    font-size: 14px;
+    color: #666;
+  }
+
+  /* Animação de fadeIn */
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(-20px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  </style>
+</head>
+<body>
+  <div id="loginDiv">
+    <h2>Login</h2>
+    <label style="margin-bottom:30px; display: block;">1:1 Chat with end-to-end encryption, based on the CommiLink protocol</label>
+    <input id="username" placeholder="Username" />
+    <button id="loginBtn">Login</button>
+  </div>
+
+  <div id="chatDiv">
+    <h2>Chat 1:1 Commilink Example</h2>
+    <div id="messages"></div>
+    <div id="inputArea">
+      <input id="toUser" placeholder="Peer DID" />
+      <input id="msgInput" placeholder="Message" />
+      <button id="sendBtn">Send</button>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/cbor-web@8.1.0/dist/cbor.min.js"></script>
+
+  <script>
+    let ws, name, did, keyPair;
+    const sessionKeys = {}; // peer DID -> symmetric key
+
+    const loginDiv = document.getElementById("loginDiv");
+    const chatDiv = document.getElementById("chatDiv");
+    const usernameInput = document.getElementById("username");
+    const loginBtn = document.getElementById("loginBtn");
+    const messages = document.getElementById("messages");
+    const msgInput = document.getElementById("msgInput");
+    const sendBtn = document.getElementById("sendBtn");
+    const toUser = document.getElementById("toUser");
+
+    function shortDid(did) {
+      if (!did) return "";
+      return did.slice(0, 8) + "..." + did.slice(-8);
+    }
+
+    function addMessage(text, type="info", fullDid=null) {
+      const div = document.createElement("div");
+      const time = new Date().toLocaleTimeString();
+      div.textContent = `[${time}] ${text}`;
+      div.className = "message";
+
+      switch(type) {
+        case "send": div.classList.add("send"); break;
+        case "recv": div.classList.add("recv"); break;
+        case "system": div.classList.add("system"); break;
+        case "error": div.classList.add("error"); break;
+        default: div.style.color = "black";
+      }
+
+      // Adiciona botão de copiar DID completo
+      if (fullDid) {
+        const copyBtn = document.createElement("button");
+        copyBtn.textContent = "📋";
+        copyBtn.className = "copy-btn";
+        copyBtn.onclick = () => navigator.clipboard.writeText(fullDid);
+        div.appendChild(copyBtn);
+      }
+
+      messages.appendChild(div);
+      messages.scrollTop = messages.scrollHeight;
+    }
+
+    async function arrayBufferToBase64(buffer) {
+      const bytes = new Uint8Array(buffer);
+      return btoa(String.fromCharCode(...bytes));
+    }
+
+    async function base64ToArrayBuffer(base64) {
+      const binary = atob(base64);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) {
+        bytes[i] = binary.charCodeAt(i);
+      }
+      return bytes.buffer;
+    }
+
+    async function initClient() {
+      if (typeof cbor === "undefined") {
+        addMessage("[erro] Biblioteca CBOR não carregada.", "error");
+        return;
+      }
+
+      loginBtn.onclick = async () => {
+        name = usernameInput.value || "anon-" + Math.floor(Math.random() * 1000);
+
+        keyPair = await crypto.subtle.generateKey(
+          { name: "ECDH", namedCurve: "P-256" },
+          true,
+          ["deriveKey"]
+        );
+
+        const publicKey = await crypto.subtle.exportKey("raw", keyPair.publicKey);
+        did = `did:opp:ecdh-p256:${await arrayBufferToBase64(publicKey)}`;
+
+        ws = new WebSocket("ws://localhost:8080");
+        ws.binaryType = "arraybuffer";
+
+        ws.onopen = async () => {
+          addMessage(`🔵 [${name}] conectado ao relay`, "system");
+          const hello = {
+            type: "HELLO",
+            from: did,
+            pub: await arrayBufferToBase64(publicKey),
+            name
+          };
+          ws.send(cbor.encode(hello));
+        };
+
+        ws.onmessage = async (event) => {
+          let data;
+          if (event.data instanceof ArrayBuffer) {
+            data = event.data;
+          } else if (typeof event.data === "string") {
+            try {
+              data = await base64ToArrayBuffer(event.data);
+            } catch {
+              addMessage("[erro] Mensagem inválida recebida", "error");
+              return;
+            }
+          } else {
+            addMessage("[erro] Tipo de dados inválido recebido", "error");
+            return;
+          }
+
+          try {
+            const msg = cbor.decode(data);
+            if (msg.from === did) return;
+
+            switch (msg.type) {
+              case "HELLO":
+                addMessage(`🔑 HELLO de ${shortDid(msg.from)} (${msg.name || ""})`, "system", msg.from);
+                try {
+                  const peerPub = await base64ToArrayBuffer(msg.pub);
+                  const peerPublicKey = await crypto.subtle.importKey(
+                    "raw",
+                    peerPub,
+                    { name: "ECDH", namedCurve: "P-256" },
+                    false,
+                    []
+                  );
+                  const sharedSecret = await crypto.subtle.deriveKey(
+                    { name: "ECDH", public: peerPublicKey },
+                    keyPair.privateKey,
+                    { name: "AES-GCM", length: 256 },
+                    false,
+                    ["encrypt", "decrypt"]
+                  );
+                  sessionKeys[msg.from] = sharedSecret;
+                  addMessage(`🔑 Chave simétrica criada com ${shortDid(msg.from)}`, "system", msg.from);
+
+                  ws.send(cbor.encode({
+                    type: "ACCEPT",
+                    from: did,
+                    to: msg.from,
+                    pub: await arrayBufferToBase64(await crypto.subtle.exportKey("raw", keyPair.publicKey)),
+                    name
+                  }));
+                } catch {
+                  addMessage(`[erro] Falha ao derivar chave para ${shortDid(msg.from)}`, "error", msg.from);
+                }
+                break;
+
+              case "ACCEPT":
+                if (msg.to !== did) break;
+                addMessage(`🔑 ACCEPT recebido de ${shortDid(msg.from)}`, "system", msg.from);
+                try {
+                  const peerPub = await base64ToArrayBuffer(msg.pub);
+                  const peerPublicKey = await crypto.subtle.importKey(
+                    "raw",
+                    peerPub,
+                    { name: "ECDH", namedCurve: "P-256" },
+                    false,
+                    []
+                  );
+                  const sharedSecret = await crypto.subtle.deriveKey(
+                    { name: "ECDH", public: peerPublicKey },
+                    keyPair.privateKey,
+                    { name: "AES-GCM", length: 256 },
+                    false,
+                    ["encrypt", "decrypt"]
+                  );
+                  sessionKeys[msg.from] = sharedSecret;
+                  addMessage(`🔑 Chave simétrica criada com ${shortDid(msg.from)}`, "system", msg.from);
+                } catch {
+                  addMessage(`[erro] Falha ao derivar chave para ${shortDid(msg.from)}`, "error", msg.from);
+                }
+                break;
+
+              case "ENC":
+                if (msg.to && msg.to !== did) break;
+                const peer = msg.from;
+                if (!sessionKeys[peer]) {
+                  addMessage(`⚠️ Mensagem recebida de ${shortDid(peer)} mas sem chave`, "error", peer);
+                  break;
+                }
+                try {
+                  const nonce = await base64ToArrayBuffer(msg.nonce);
+                  const ct = await base64ToArrayBuffer(msg.data);
+                  const decrypted = await crypto.subtle.decrypt(
+                    { name: "AES-GCM", iv: nonce },
+                    sessionKeys[peer],
+                    ct
+                  );
+                  const text = new TextDecoder().decode(decrypted);
+                  addMessage(`📩 ${shortDid(peer)}: ${text}`, "recv", peer);
+                } catch {
+                  addMessage(`[erro] Falha ao descriptografar mensagem de ${shortDid(peer)}`, "error", peer);
+                }
+                break;
+
+              default:
+                addMessage("[relay] mensagem não tipada: " + JSON.stringify(msg), "system");
+            }
+          } catch {
+            addMessage("[erro] Falha ao decodificar mensagem do servidor", "error");
+          }
+        };
+
+        loginDiv.style.display = "none";
+        chatDiv.style.display = "flex";
+      };
+
+      sendBtn.onclick = async () => {
+        const peer = toUser.value.trim();
+        const text = msgInput.value.trim();
+        if (!peer || !text) return;
+        if (!sessionKeys[peer]) {
+          addMessage(`⚠️ sem chave de sessão para ${shortDid(peer)}`, "error", peer);
+          return;
+        }
+        try {
+          const nonce = crypto.getRandomValues(new Uint8Array(12));
+          const encodedText = new TextEncoder().encode(text);
+          const ct = await crypto.subtle.encrypt(
+            { name: "AES-GCM", iv: nonce },
+            sessionKeys[peer],
+            encodedText
+          );
+          const mid = `${Date.now()}-${Math.random().toString(36).slice(2,8)}`;
+          const encMsg = {
+            type: "ENC",
+            from: did,
+            to: peer,
+            mid,
+            nonce: await arrayBufferToBase64(nonce.buffer),
+            data: await arrayBufferToBase64(ct),
+            ts: Date.now()
+          };
+          ws.send(cbor.encode(encMsg));
+          addMessage(`✅ [${name}] -> ${shortDid(peer)}: ${text}`, "send", peer);
+          msgInput.value = "";
+        } catch {
+          addMessage("[erro] Falha ao criptografar mensagem", "error", peer);
+        }
+      };
+    }
+
+    window.onload = initClient;
+  </script>
+</body>
+</html>
